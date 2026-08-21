@@ -251,9 +251,10 @@
   <div class="header-row">
     <div class="brand">📈 JY Fund <span class="sub">Signal</span></div>
     <select id="groupSelect" class="group-select" aria-label="그룹 선택"></select>
-    <button id="manageBtn" class="btn">⚙ 그룹 관리</button>
+    <button id="manageBtn" class="btn" style="display:none">⚙ 그룹 관리</button>
     <button id="helpBtn" class="btn" title="지표 설명">❓ 지표 설명</button>
-    <button id="syncStatus" class="btn small sync-idle" title="동기화 설정 열기">☁ 확인 중</button>
+    <button id="syncStatus" class="btn small sync-idle" title="동기화 설정 열기" style="display:none">☁ 확인 중</button>
+    <button id="adminLoginBtn" class="btn small" title="관리자 모드 진입">🔑 관리자</button>
     <div class="meta">
       <span class="market" id="marketInfo"></span>
       <span id="updatedAt">—</span>
@@ -323,11 +324,12 @@
 <div id="syncModal" class="overlay sync-modal">
   <div class="modal">
     <div class="modal-hd">
-      <h2>동기화 설정</h2>
+      <h2>관리자 모드</h2>
       <button class="close" data-close>×</button>
     </div>
     <div class="modal-bd">
-      <p>이 브라우저에서 그룹을 편집하면 GitHub 저장소의 <code>data/groups.json</code>에 자동 커밋됩니다. 다른 기기에서 사이트를 열면 같은 그룹이 자동으로 로드돼요.</p>
+      <p>이 사이트는 <b>관리자만 그룹을 편집</b>할 수 있고, 나머지는 그룹을 보기만 할 수 있습니다. 관리자 권한은 GitHub Personal Access Token으로 인증합니다 (별도 서버 없음).</p>
+      <p class="note">이미 다른 관리자가 그룹을 관리하고 있다면 이 화면을 무시하고 닫으셔도 됩니다. 그룹은 저장소의 <code>data/groups.json</code>에서 자동으로 불러와요.</p>
 
       <div class="status-block">
         <div class="label">현재 상태</div>
@@ -473,6 +475,8 @@ const STATE_ORDER = { STRONG: 0, ACTIONABLE: 1, READY: 2, WATCH: 3, PASS: 4 };
 let SYNC_TIMER = null;
 let LAST_SYNC_ERR = "";
 
+function isAdmin() { return !!localStorage.getItem(LS_PAT); }
+
 let DATA = null;
 let UNIVERSE = [];
 let GROUPS = [];
@@ -500,6 +504,7 @@ async function boot() {
   renderGroupSelect();
   render();
   bindEvents();
+  applyMode();
   refreshSyncBadge();  // 초기 상태 표시
 }
 
@@ -536,25 +541,31 @@ async function fetchRemoteGroups() {
 }
 
 async function loadGroupsMerged() {
-  const local = readLocalV2();
   const remote = await fetchRemoteGroups();
-
-  const localT = local?.updatedAt ? Date.parse(local.updatedAt) : 0;
-  const remoteT = remote?.updatedAt ? Date.parse(remote.updatedAt) : 0;
+  const local = readLocalV2();
 
   let winner = null;
   let needPush = false;
 
-  if (local && localT > remoteT && local.groups.length) {
-    winner = local;
-    needPush = true;  // 로컬이 최신 → 저장소에 반영
-  } else if (remote && remote.groups.length) {
-    winner = remote;
-  } else if (local && local.groups.length) {
-    winner = local;
-    needPush = true;
+  if (isAdmin()) {
+    // 관리자: local/remote 중 updatedAt 최신본
+    const localT = local?.updatedAt ? Date.parse(local.updatedAt) : 0;
+    const remoteT = remote?.updatedAt ? Date.parse(remote.updatedAt) : 0;
+    if (local && localT > remoteT && local.groups.length) {
+      winner = local; needPush = true;  // 저장소에 반영 필요
+    } else if (remote && remote.groups.length) {
+      winner = remote;
+    } else if (local && local.groups.length) {
+      winner = local; needPush = true;
+    }
   } else {
-    // 아무것도 없음 (신규)
+    // 뷰어: 무조건 저장소가 정본. 로컬은 selectedGroupId(개인 취향) 만 반영
+    if (remote && remote.groups.length) winner = remote;
+    else if (local && local.groups.length) winner = local;  // remote fetch 실패 폴백
+  }
+
+  if (!winner) {
+    // 아무것도 없는 신규 상태 (repo file도 비어있는 예외 케이스)
     winner = {
       updatedAt: new Date().toISOString(),
       groups: [{ id: "default", name: "Default", tickers: ["NVDA","GOOGL","MSFT"] }],
@@ -564,21 +575,30 @@ async function loadGroupsMerged() {
   }
 
   GROUPS = winner.groups;
-  SELECTED = winner.selectedGroupId || GROUPS[0].id;
+
+  // selectedGroupId: 뷰어의 경우 개인이 마지막에 본 그룹 유지 (로컬 우선)
+  let sel = null;
+  if (!isAdmin() && local?.selectedGroupId && GROUPS.find(g => g.id === local.selectedGroupId)) {
+    sel = local.selectedGroupId;
+  } else {
+    sel = winner.selectedGroupId;
+  }
+  SELECTED = sel;
   if (!GROUPS.find(g => g.id === SELECTED)) SELECTED = GROUPS[0].id;
 
-  // 로컬 저장 (updatedAt은 winner 그대로 유지 — 새 편집이 아님)
+  // 로컬 캐시 갱신 (updatedAt은 winner 그대로 — 새 편집이 아님)
   localStorage.setItem(LS_GROUPS_V2, JSON.stringify({
     updatedAt: winner.updatedAt,
     groups: GROUPS,
     selectedGroupId: SELECTED,
   }));
 
-  if (needPush) scheduleSync();
+  if (needPush && isAdmin()) scheduleSync();
 }
 
 function saveGroups() {
-  // 편집이 일어난 시점 → updatedAt 갱신 + 원격 push 예약
+  // 그룹 편집. 관리자만 원격 push.
+  if (!isAdmin()) return;  // 뷰어는 편집 UI 자체가 숨겨져 있어 여기 오면 안 됨
   localStorage.setItem(LS_GROUPS_V2, JSON.stringify({
     updatedAt: new Date().toISOString(),
     groups: GROUPS,
@@ -588,13 +608,15 @@ function saveGroups() {
 }
 
 function saveSelected() {
-  // 그룹 선택 변경 — 이것도 동기화 (기기 간 마지막 열어본 그룹 통일)
+  // 그룹 선택은 뷰어에게도 로컬 저장 (개인 취향, 서버 반영 X)
   const raw = localStorage.getItem(LS_GROUPS_V2);
   const cur = raw ? JSON.parse(raw) : { groups: GROUPS };
   cur.selectedGroupId = SELECTED;
-  cur.updatedAt = new Date().toISOString();
+  if (isAdmin()) {
+    cur.updatedAt = new Date().toISOString();
+  }
   localStorage.setItem(LS_GROUPS_V2, JSON.stringify(cur));
-  scheduleSync();
+  if (isAdmin()) scheduleSync();
 }
 
 function currentGroup() { return GROUPS.find(g => g.id === SELECTED); }
@@ -628,6 +650,13 @@ function refreshSyncBadge() {
   const pat = localStorage.getItem(LS_PAT);
   if (!pat) setSyncBadge("no-pat");
   else setSyncBadge("idle");
+}
+
+function applyMode() {
+  const admin = isAdmin();
+  document.getElementById("manageBtn").style.display   = admin ? "" : "none";
+  document.getElementById("syncStatus").style.display  = admin ? "" : "none";
+  document.getElementById("adminLoginBtn").style.display = admin ? "none" : "";
 }
 
 async function pushToRepo() {
@@ -708,9 +737,9 @@ function savePAT() {
   if (!v || v.startsWith("•")) return;  // masked placeholder 그대로면 무시
   localStorage.setItem(LS_PAT, v);
   localStorage.removeItem(LS_SHA);  // 새 토큰으로 sha 재확인
+  applyMode();
   refreshSyncBadge();
-  scheduleSync();
-  // 3초 debounce 무시하고 즉시 push
+  // 3초 debounce 무시하고 즉시 push (관리자 모드 진입 확정)
   if (SYNC_TIMER) clearTimeout(SYNC_TIMER);
   pushToRepo();
 }
@@ -719,7 +748,9 @@ function clearPAT() {
   localStorage.removeItem(LS_PAT);
   localStorage.removeItem(LS_SHA);
   document.getElementById("patInput").value = "";
+  applyMode();
   refreshSyncBadge();
+  document.getElementById("syncModal").classList.remove("on");
 }
 
 // ────────── header ──────────
@@ -1055,6 +1086,7 @@ function bindEvents() {
   document.getElementById("manageBtn").onclick = openGroupModal;
   document.getElementById("helpBtn").onclick = () => document.getElementById("helpModal").classList.add("on");
   document.getElementById("syncStatus").onclick = openSyncModal;
+  document.getElementById("adminLoginBtn").onclick = openSyncModal;
   document.getElementById("patSaveBtn").onclick = savePAT;
   document.getElementById("patClearBtn").onclick = clearPAT;
   document.getElementById("patInput").addEventListener("focus", (e) => {
