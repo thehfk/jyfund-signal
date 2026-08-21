@@ -324,41 +324,31 @@
 <div id="syncModal" class="overlay sync-modal">
   <div class="modal">
     <div class="modal-hd">
-      <h2>관리자 모드</h2>
+      <h2>관리자 로그인</h2>
       <button class="close" data-close>×</button>
     </div>
     <div class="modal-bd">
-      <p>이 사이트는 <b>관리자만 그룹을 편집</b>할 수 있고, 나머지는 그룹을 보기만 할 수 있습니다. 관리자 권한은 GitHub Personal Access Token으로 인증합니다 (별도 서버 없음).</p>
-      <p class="note">이미 다른 관리자가 그룹을 관리하고 있다면 이 화면을 무시하고 닫으셔도 됩니다. 그룹은 저장소의 <code>data/groups.json</code>에서 자동으로 불러와요.</p>
+      <p>관리자만 그룹을 편집할 수 있습니다. 비밀번호는 별도 인증 서버(Cloudflare Worker)에서 검증되며, GitHub 자격증명은 서버에만 존재합니다.</p>
 
       <div class="status-block">
         <div class="label">현재 상태</div>
         <div id="syncStatusDetail">—</div>
       </div>
 
-      <h3>1. GitHub Personal Access Token 만들기</h3>
-      <ol>
-        <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">여기 클릭</a> → Fine-grained PAT 만들기 페이지 열림</li>
-        <li>Token name: <code>jyfund-signal-sync</code></li>
-        <li>Expiration: 원하시는 기간 (권장: 1년)</li>
-        <li>Resource owner: <b>thehfk</b></li>
-        <li>Repository access: <b>Only select repositories</b> → <code>jyfund-signal</code> 선택</li>
-        <li>Permissions → Repository permissions → <b>Contents: Read and write</b> 로 설정</li>
-        <li><b>Generate token</b> → 만들어진 토큰(<code>github_pat_...</code>) 복사</li>
-      </ol>
-
-      <h3>2. 여기 붙여넣기</h3>
-      <input id="patInput" class="text" type="password" placeholder="github_pat_... 또는 ghp_...">
+      <h3>비밀번호</h3>
+      <input id="patInput" class="text" type="password" placeholder="관리자 비밀번호" autocomplete="current-password">
+      <div id="loginErr" style="color:var(--danger);font-size:12px;min-height:16px;margin-top:6px"></div>
       <div class="row">
-        <button id="patSaveBtn" class="btn primary">저장 + 즉시 동기화</button>
-        <button id="patClearBtn" class="btn danger">토큰 삭제</button>
+        <button id="patSaveBtn" class="btn primary">로그인</button>
+        <button id="patClearBtn" class="btn danger">로그아웃</button>
       </div>
-      <p class="note">토큰은 이 브라우저의 localStorage에 저장되며, GitHub API 외 다른 서버로 전송되지 않습니다. 다른 사람이 이 브라우저에 접근할 수 있으면 삭제해 주세요.</p>
+      <p class="note">로그인 성공 시 이 브라우저에 세션 토큰(30일)만 저장됩니다. GitHub PAT는 브라우저·저장소 어디에도 저장되지 않습니다.</p>
 
       <h3>주의사항</h3>
       <ul style="padding-left:20px;font-size:12px;color:var(--muted);margin:6px 0">
-        <li>GitHub Pages는 캐시가 있어서 다른 기기에 반영까지 최대 <b>5~10분</b> 걸릴 수 있습니다.</li>
-        <li>두 기기에서 동시에 편집하면 나중 편집이 이깁니다 (충돌 시 자동 재시도).</li>
+        <li>공용 PC라면 사용 후 <b>로그아웃</b> 버튼으로 세션 정리하세요.</li>
+        <li>비밀번호 5회 이상 틀리면 잠시 후 다시 시도하세요 (Worker 지연 응답).</li>
+        <li>편집 후 다른 기기에 반영까지 GitHub Pages 캐시로 최대 <b>5~10분</b> 걸릴 수 있습니다.</li>
       </ul>
     </div>
     <div class="modal-ft">
@@ -467,15 +457,17 @@ const GROUPS_URL = "data/groups.json";
 const LS_GROUPS = "jyfund_groups";           // legacy (배열)
 const LS_SELECTED = "jyfund_selected_group"; // legacy
 const LS_GROUPS_V2 = "jyfund_groups_v2";     // { updatedAt, groups, selectedGroupId }
-const LS_PAT = "jyfund_gh_pat";
-const LS_SHA = "jyfund_groups_sha";
-const REPO = "thehfk/jyfund-signal";
-const GROUPS_PATH = "data/groups.json";
+const LS_PAT = "jyfund_gh_pat";              // legacy (구버전 저장된 PAT 정리용)
+const LS_SESSION = "jyfund_session";         // Worker 로그인 세션 토큰
 const STATE_ORDER = { STRONG: 0, ACTIONABLE: 1, READY: 2, WATCH: 3, PASS: 4 };
+
+// Worker URL — 배포 후 채워짐. 비어 있으면 뷰어 전용 모드로 동작.
+const WORKER_URL = "";
+
 let SYNC_TIMER = null;
 let LAST_SYNC_ERR = "";
 
-function isAdmin() { return !!localStorage.getItem(LS_PAT); }
+function isAdmin() { return !!localStorage.getItem(LS_SESSION) && !!WORKER_URL; }
 
 let DATA = null;
 let UNIVERSE = [];
@@ -625,19 +617,19 @@ function currentGroup() { return GROUPS.find(g => g.id === SELECTED); }
 function scheduleSync() {
   if (SYNC_TIMER) clearTimeout(SYNC_TIMER);
   setSyncBadge("pending");
-  SYNC_TIMER = setTimeout(pushToRepo, 3000);
+  SYNC_TIMER = setTimeout(pushToWorker, 3000);
 }
 
 function setSyncBadge(state, detailText) {
   const el = document.getElementById("syncStatus");
   if (!el) return;
   const map = {
-    idle:    { text: "☁ 대기",       cls: "sync-idle",    detail: "동기화 없음" },
-    pending: { text: "⏳ 곧 동기화",  cls: "sync-pending", detail: "3초 뒤 저장소에 커밋 예약됨" },
-    syncing: { text: "⏳ 동기화 중",  cls: "sync-syncing", detail: "GitHub API 커밋 중..." },
-    ok:      { text: "☁ 동기화됨",   cls: "sync-ok",      detail: "저장소와 일치. 다른 기기에서 새로고침하면 반영 (Pages 캐시 5~10분)." },
-    error:   { text: "⚠ 동기화 실패", cls: "sync-error",   detail: LAST_SYNC_ERR || "네트워크/PAT 오류. 콘솔 확인." },
-    "no-pat":{ text: "⚙ PAT 필요",   cls: "sync-no-pat",  detail: "GitHub Personal Access Token이 설정되지 않았습니다. 클릭해서 설정하세요." },
+    idle:    { text: "☁ 로그인됨",   cls: "sync-idle",    detail: "로그인됨. 그룹 편집 시 자동 동기화." },
+    pending: { text: "⏳ 곧 동기화",  cls: "sync-pending", detail: "3초 뒤 Worker에 전송 예약됨" },
+    syncing: { text: "⏳ 동기화 중",  cls: "sync-syncing", detail: "Worker → GitHub 커밋 중..." },
+    ok:      { text: "☁ 동기화됨",   cls: "sync-ok",      detail: "저장소와 일치. 다른 기기 반영까지 Pages 캐시로 5~10분." },
+    error:   { text: "⚠ 동기화 실패", cls: "sync-error",   detail: LAST_SYNC_ERR || "네트워크/서버 오류. 콘솔 확인." },
+    "no-pat":{ text: "🔑 재로그인 필요", cls: "sync-no-pat", detail: LAST_SYNC_ERR || "세션이 만료됐거나 로그인되지 않았습니다. 클릭해서 로그인하세요." },
   };
   const s = map[state] || map.idle;
   el.textContent = s.text;
@@ -647,8 +639,7 @@ function setSyncBadge(state, detailText) {
 }
 
 function refreshSyncBadge() {
-  const pat = localStorage.getItem(LS_PAT);
-  if (!pat) setSyncBadge("no-pat");
+  if (!localStorage.getItem(LS_SESSION)) setSyncBadge("no-pat");
   else setSyncBadge("idle");
 }
 
@@ -659,64 +650,39 @@ function applyMode() {
   document.getElementById("adminLoginBtn").style.display = admin ? "none" : "";
 }
 
-async function pushToRepo() {
-  const pat = localStorage.getItem(LS_PAT);
-  if (!pat) { setSyncBadge("no-pat"); return; }
+async function pushToWorker() {
+  const session = localStorage.getItem(LS_SESSION);
+  if (!session || !WORKER_URL) { setSyncBadge("no-pat"); return; }
 
   setSyncBadge("syncing");
   const raw = localStorage.getItem(LS_GROUPS_V2);
   if (!raw) { setSyncBadge("ok"); return; }
-  const body = raw;  // 저장된 JSON 그대로 커밋 (updatedAt 포함)
-  const contentB64 = btoa(unescape(encodeURIComponent(JSON.stringify(JSON.parse(body), null, 2) + "\n")));
 
-  const tryPut = async (sha) => {
-    const putBody = {
-      message: `groups: sync from browser ${new Date().toISOString()}`,
-      content: contentB64,
-      branch: "main",
-    };
-    if (sha) putBody.sha = sha;
-    return await fetch(`https://api.github.com/repos/${REPO}/contents/${GROUPS_PATH}`, {
-      method: "PUT",
-      headers: {
-        "Authorization": `Bearer ${pat}`,
-        "Content-Type": "application/json",
-        "Accept": "application/vnd.github+json",
-      },
-      body: JSON.stringify(putBody),
-    });
-  };
-
-  const fetchSha = async () => {
-    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${GROUPS_PATH}?ref=main&t=${Date.now()}`, {
-      headers: {
-        "Authorization": `Bearer ${pat}`,
-        "Accept": "application/vnd.github+json",
-      },
-      cache: "no-store",
-    });
-    if (!r.ok) return null;
-    const j = await r.json();
-    return j.sha;
-  };
+  // 저장 페이로드는 groups.json 스키마 그대로 (updatedAt 포함)
+  const payload = JSON.parse(raw);
 
   try {
-    let sha = localStorage.getItem(LS_SHA);
-    if (!sha) sha = await fetchSha();
-
-    let r = await tryPut(sha);
-    if (r.status === 409 || r.status === 422) {
-      // sha 불일치 → 최신 sha 다시 받아 재시도
-      const fresh = await fetchSha();
-      r = await tryPut(fresh);
+    const r = await fetch(WORKER_URL.replace(/\/$/, "") + "/groups", {
+      method: "PUT",
+      headers: {
+        "Authorization": "Bearer " + session,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (r.status === 401) {
+      // 세션 만료
+      localStorage.removeItem(LS_SESSION);
+      applyMode();
+      LAST_SYNC_ERR = "세션 만료. 다시 로그인해 주세요.";
+      setSyncBadge("no-pat");
+      return;
     }
-    if (!r.ok) {
-      const text = await r.text();
-      LAST_SYNC_ERR = `HTTP ${r.status}: ${text.slice(0, 200)}`;
+    const rj = await r.json().catch(() => ({}));
+    if (!r.ok || !rj.ok) {
+      LAST_SYNC_ERR = `HTTP ${r.status}: ${rj.error || "unknown"}`;
       throw new Error(LAST_SYNC_ERR);
     }
-    const rj = await r.json();
-    if (rj.content?.sha) localStorage.setItem(LS_SHA, rj.content.sha);
     LAST_SYNC_ERR = "";
     setSyncBadge("ok");
   } catch (e) {
@@ -725,28 +691,51 @@ async function pushToRepo() {
   }
 }
 
+async function loginWithPassword(password) {
+  if (!WORKER_URL) throw new Error("Worker URL 미설정. 관리자에게 문의하세요.");
+  const r = await fetch(WORKER_URL.replace(/\/$/, "") + "/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (r.status === 401) throw new Error("비밀번호 오류");
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok || !j.token) {
+    throw new Error(j.error || `HTTP ${r.status}`);
+  }
+  return j.token;
+}
+
 function openSyncModal() {
-  const pat = localStorage.getItem(LS_PAT);
-  document.getElementById("patInput").value = pat ? "•".repeat(20) : "";
+  document.getElementById("patInput").value = "";
+  const loginErr = document.getElementById("loginErr");
+  if (loginErr) loginErr.textContent = "";
   document.getElementById("syncModal").classList.add("on");
-  // 배지 상태는 유지 (마지막 sync 결과 반영). detail text는 setSyncBadge가 이미 채워놨음.
 }
 
-function savePAT() {
-  const v = document.getElementById("patInput").value.trim();
-  if (!v || v.startsWith("•")) return;  // masked placeholder 그대로면 무시
-  localStorage.setItem(LS_PAT, v);
-  localStorage.removeItem(LS_SHA);  // 새 토큰으로 sha 재확인
-  applyMode();
-  refreshSyncBadge();
-  // 3초 debounce 무시하고 즉시 push (관리자 모드 진입 확정)
-  if (SYNC_TIMER) clearTimeout(SYNC_TIMER);
-  pushToRepo();
+async function loginSubmit() {
+  const v = document.getElementById("patInput").value;
+  const errEl = document.getElementById("loginErr");
+  if (!v) { errEl.textContent = "비밀번호를 입력하세요."; return; }
+  errEl.textContent = "확인 중…";
+  try {
+    const token = await loginWithPassword(v);
+    localStorage.setItem(LS_SESSION, token);
+    localStorage.removeItem(LS_PAT);  // legacy 정리
+    document.getElementById("patInput").value = "";
+    document.getElementById("syncModal").classList.remove("on");
+    applyMode();
+    refreshSyncBadge();
+    // 로그인 직후 pending 상태였다면 즉시 push
+    if (SYNC_TIMER) { clearTimeout(SYNC_TIMER); pushToWorker(); }
+  } catch (e) {
+    errEl.textContent = "로그인 실패: " + e.message;
+  }
 }
 
-function clearPAT() {
+function logoutAdmin() {
+  localStorage.removeItem(LS_SESSION);
   localStorage.removeItem(LS_PAT);
-  localStorage.removeItem(LS_SHA);
   document.getElementById("patInput").value = "";
   applyMode();
   refreshSyncBadge();
@@ -1087,10 +1076,10 @@ function bindEvents() {
   document.getElementById("helpBtn").onclick = () => document.getElementById("helpModal").classList.add("on");
   document.getElementById("syncStatus").onclick = openSyncModal;
   document.getElementById("adminLoginBtn").onclick = openSyncModal;
-  document.getElementById("patSaveBtn").onclick = savePAT;
-  document.getElementById("patClearBtn").onclick = clearPAT;
-  document.getElementById("patInput").addEventListener("focus", (e) => {
-    if (e.target.value.startsWith("•")) e.target.value = "";
+  document.getElementById("patSaveBtn").onclick = loginSubmit;
+  document.getElementById("patClearBtn").onclick = logoutAdmin;
+  document.getElementById("patInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); loginSubmit(); }
   });
   document.getElementById("newGroupBtn").onclick = newGroup;
 

@@ -1,0 +1,8 @@
+name = "jyfund-signal-admin"
+main = "src/index.js"
+compatibility_date = "2026-08-21"
+
+# Secrets — 아래 명령으로 세팅 (평문 저장 X, wrangler가 CF에 암호화 업로드):
+#   wrangler secret put ADMIN_PW         # 관리자 비밀번호 (12자 이상 권장)
+#   wrangler secret put GITHUB_PAT       # jyfund-signal repo contents:write PAT
+#   wrangler secret put SESSION_SECRET   # HMAC 서명키 (random 32-byte hex)
