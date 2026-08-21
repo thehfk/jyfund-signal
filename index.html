@@ -205,6 +205,22 @@
   .mcard-hd .t { font-weight: 700; font-size: 16px; }
   .mcard-hd .p { font-variant-numeric: tabular-nums; }
   .mcard-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--muted); }
+
+  /* Help modal */
+  .help .modal { max-width: 780px; }
+  .help h3 { margin: 18px 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .help h3:first-child { margin-top: 0; }
+  .help table { width: 100%; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .help table th, .help table td { padding: 8px 12px; font-size: 13px; text-align: left; border-bottom: 1px solid var(--border); }
+  .help table th { background: var(--bg3); font-weight: 500; color: var(--muted); text-transform: none; letter-spacing: 0; font-size: 12px; cursor: default; }
+  .help table tr:last-child td { border-bottom: none; }
+  .help table td:first-child { font-weight: 600; white-space: nowrap; }
+  .help p { margin: 6px 0; color: var(--text); font-size: 13px; }
+  .help .note { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .help details { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; margin-top: 8px; }
+  .help details summary { cursor: pointer; font-weight: 500; color: var(--text); }
+  .help details[open] summary { margin-bottom: 8px; }
+  .help code { background: var(--bg); padding: 1px 6px; border-radius: 3px; font-size: 12px; color: var(--accent); }
 </style>
 </head>
 <body>
@@ -214,6 +230,7 @@
     <div class="brand">📈 JY Fund <span class="sub">Signal</span></div>
     <select id="groupSelect" class="group-select" aria-label="그룹 선택"></select>
     <button id="manageBtn" class="btn">⚙ 그룹 관리</button>
+    <button id="helpBtn" class="btn" title="지표 설명">❓ 지표 설명</button>
     <div class="meta">
       <span class="market" id="marketInfo"></span>
       <span id="updatedAt">—</span>
@@ -272,6 +289,86 @@
         </div>
         <div id="notInUniverse" style="margin-top:8px;font-size:12px;color:var(--watch);display:none"></div>
       </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 지표 설명 모달 -->
+<div id="helpModal" class="overlay help">
+  <div class="modal">
+    <div class="modal-hd">
+      <h2>지표 설명</h2>
+      <button class="close" data-close>×</button>
+    </div>
+    <div class="modal-bd">
+
+      <h3>상단 시장 컨텍스트</h3>
+      <table>
+        <tr><td>SPY</td><td>S&amp;P 500 ETF 가격 · 20일 수익률. 시장 흐름 판단용. 초록이면 위험자산 우호적</td></tr>
+        <tr><td>VIX</td><td>공포지수. <b>15↓</b> 잔잔 / <b>15~20</b> 정상 / <b>20~25</b> 긴장 / <b>25+</b> 공포</td></tr>
+      </table>
+
+      <h3>스캐너 표 컬럼</h3>
+      <table>
+        <tr><td>종목</td><td>티커 심볼</td></tr>
+        <tr><td>SCORE</td><td>JY Score 0~100 (7팩터 합산, 실질 상한 ~85). 높을수록 매수 조건 성숙</td></tr>
+        <tr><td>STATE</td><td>종합 판정 (아래 등급표 참고)</td></tr>
+        <tr><td>PRICE</td><td>현재가 (USD)</td></tr>
+        <tr><td>1D</td><td>오늘 등락률 (전일 종가 대비). 초록 = 상승, 빨강 = 하락</td></tr>
+        <tr><td>RVOL</td><td>Relative Volume = 오늘 거래량 ÷ 20일 평균. <b>1.5x+</b> 뜨거움 / <b>1.0x</b> 평균 / <b>0.7x↓</b> 저조</td></tr>
+        <tr><td>TRIGGER (EARLY)</td><td>매수 진입 후보 가격 (MA20 사용). 현재가가 이 값 이상이면 ✓</td></tr>
+        <tr><td>거리</td><td>(EARLY − 현재가) ÷ 현재가 × 100. <b>+</b>면 트리거까지 더 올라야 함, <b>−</b>면 이미 트리거 하방 (눌림목 진입 지대)</td></tr>
+        <tr><td>VOL Q</td><td>Volume Quality: RVOL + 캔들 색 조합. STRONG (양봉+대량) / NEUTRAL / WEAK</td></tr>
+      </table>
+
+      <h3>STATE 등급</h3>
+      <table>
+        <tr><td><span class="state-pill state-STRONG">STRONG</span></td><td>Score ≥ 78 · 여러 조건이 동시에 성숙 · 즉시 검토</td></tr>
+        <tr><td><span class="state-pill state-ACTIONABLE">ACTIONABLE</span></td><td>Score 65–77 · 진입 준비 완료</td></tr>
+        <tr><td><span class="state-pill state-READY">READY</span></td><td>Score 52–64 · 트리거 접근 중</td></tr>
+        <tr><td><span class="state-pill state-WATCH">WATCH</span></td><td>Score 38–51 · 관심만 유지</td></tr>
+        <tr><td><span class="state-pill state-PASS">PASS</span></td><td>Score &lt; 38 · 지금은 아님</td></tr>
+      </table>
+
+      <h3>Trigger 가격 4단</h3>
+      <p class="note">종목 상세 (행 클릭)에 표시됩니다.</p>
+      <table>
+        <tr><td>EARLY</td><td>MA20 (되돌림 진입 후보)</td></tr>
+        <tr><td>CONFIRM</td><td>20일 종가 신고점 (돌파 확인 진입)</td></tr>
+        <tr><td>TREND</td><td>CONFIRM × 1.10 (추세 확장 타깃)</td></tr>
+        <tr><td>Invalidation</td><td>min(MA50, MA20 × 0.95) · 이 아래로 깨지면 시나리오 무효 (손절)</td></tr>
+      </table>
+
+      <details>
+        <summary>JY Score 7팩터 (총 100점)</summary>
+        <table>
+          <tr><th>팩터</th><th>배점</th><th>로직</th></tr>
+          <tr><td>Long-term Trend</td><td>20</td><td>MA20 &gt; MA50 &gt; MA200 정렬 + MA20 기울기</td></tr>
+          <tr><td>Pullback Quality</td><td>15</td><td>20일 고점 대비 2~8% 조정이면서 MA20 위 (sweet spot)</td></tr>
+          <tr><td>Volume</td><td>15</td><td>RVOL + 캔들 색</td></tr>
+          <tr><td>Reversal Pattern</td><td>15</td><td>Hammer / Bullish Engulfing / Higher Low</td></tr>
+          <tr><td>Relative Strength</td><td>10</td><td>20일 수익률 vs SPY</td></tr>
+          <tr><td>Market Environment</td><td>10</td><td>VIX + SPY vs MA50/MA200</td></tr>
+          <tr><td>R:R</td><td>15</td><td>Trigger→Target ÷ Trigger→Invalidation</td></tr>
+        </table>
+      </details>
+
+      <details>
+        <summary>Universe vs Group</summary>
+        <p><b>Universe</b> = 파이썬이 매 30분 스캔하는 전체 종목 풀 (<code>data/universe.json</code>). 지금 47개.</p>
+        <p><b>Group</b> = 브라우저에 저장되는 내 관심 리스트. 그룹을 바꾸면 같은 시그널 풀에서 다른 종목만 필터돼 보입니다.</p>
+        <p>Universe에 없는 티커는 그룹에 넣어도 스캔되지 않습니다. 스캔하려면 <code>data/universe.json</code>에 추가하고 commit (Phase 2에서 웹 UI 예정).</p>
+      </details>
+
+      <details>
+        <summary>업데이트 주기 · 데이터 출처</summary>
+        <p>Yahoo Finance 일봉 200일. GitHub Actions cron이 30분마다 실행 (실제로는 ~5~10분 지연 흔함).</p>
+        <p>노트북이 꺼져 있어도 GitHub 서버가 계속 돌립니다.</p>
+      </details>
+
     </div>
     <div class="modal-ft">
       <button class="btn" data-close>닫기</button>
@@ -673,6 +770,7 @@ function bindEvents() {
     SELECTED = e.target.value; saveSelected(); render();
   };
   document.getElementById("manageBtn").onclick = openGroupModal;
+  document.getElementById("helpBtn").onclick = () => document.getElementById("helpModal").classList.add("on");
   document.getElementById("newGroupBtn").onclick = newGroup;
 
   document.querySelectorAll("[data-close]").forEach(b => b.onclick = (e) => {
