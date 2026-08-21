@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JY Fund · Signal</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #1c2129;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --strong: #3fb950;
+    --actionable: #56d364;
+    --ready: #d29922;
+    --watch: #f0883e;
+    --pass: #6e7681;
+    --danger: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+  }
+  .header-row {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    max-width: 1400px; margin: 0 auto;
+  }
+  .brand { font-weight: 600; font-size: 16px; margin-right: 4px; }
+  .brand .sub { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .group-select {
+    background: var(--bg3); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; font-size: 14px; cursor: pointer;
+  }
+  .btn {
+    background: var(--bg3); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 12px; font-size: 13px; cursor: pointer;
+    transition: background 0.1s;
+  }
+  .btn:hover { background: #262c36; }
+  .btn.primary { background: #238636; border-color: #2ea043; }
+  .btn.primary:hover { background: #2ea043; }
+  .btn.danger { color: var(--danger); }
+  .btn.small { padding: 3px 8px; font-size: 12px; }
+  .meta { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .meta .market { margin-right: 12px; }
+
+  main { max-width: 1400px; margin: 0 auto; padding: 16px; }
+
+  table {
+    width: 100%; border-collapse: collapse;
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden;
+  }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th {
+    background: var(--bg3); color: var(--muted);
+    font-weight: 500; font-size: 12px; text-transform: uppercase;
+    cursor: pointer; user-select: none;
+  }
+  th:hover { color: var(--text); }
+  tbody tr { cursor: pointer; transition: background 0.05s; }
+  tbody tr:hover { background: var(--bg3); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.ticker { font-weight: 600; }
+  .score {
+    display: inline-block; min-width: 32px; padding: 2px 8px; border-radius: 4px;
+    font-weight: 600; text-align: center;
+  }
+  .state-pill {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+  }
+  .state-STRONG    { background: rgba(63, 185, 80, 0.2);  color: var(--strong); }
+  .state-ACTIONABLE{ background: rgba(86, 211, 100, 0.15); color: var(--actionable); }
+  .state-READY     { background: rgba(210, 153, 34, 0.2); color: var(--ready); }
+  .state-WATCH     { background: rgba(240, 136, 62, 0.15); color: var(--watch); }
+  .state-PASS      { background: rgba(110, 118, 129, 0.2); color: var(--pass); }
+  .rvol-hot  { color: var(--strong); }
+  .rvol-warm { color: var(--ready); }
+  .rvol-cold { color: var(--muted); }
+
+  .empty {
+    text-align: center; padding: 60px 20px; color: var(--muted);
+    background: var(--bg2); border: 1px dashed var(--border); border-radius: 8px;
+  }
+
+  /* Modal */
+  .overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.6); z-index: 50;
+    align-items: flex-start; justify-content: center;
+    padding: 40px 16px; overflow-y: auto;
+  }
+  .overlay.on { display: flex; }
+  .modal {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    width: 100%; max-width: 640px;
+  }
+  .modal-hd {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .modal-hd h2 { margin: 0; font-size: 16px; }
+  .modal-bd { padding: 16px 20px; }
+  .modal-ft { padding: 12px 20px; border-top: 1px solid var(--border); text-align: right; }
+  .close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 20px; }
+
+  .group-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .group-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .group-item .name { flex: 1; font-weight: 500; }
+  .group-item .count { color: var(--muted); font-size: 12px; }
+  .divider { border-top: 1px solid var(--border); margin: 16px 0; }
+
+  .ticker-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .chip {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 4px;
+    padding: 4px 8px; font-size: 12px; display: flex; align-items: center; gap: 6px;
+  }
+  .chip button {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    padding: 0; font-size: 14px; line-height: 1;
+  }
+  .chip button:hover { color: var(--danger); }
+
+  input.text {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 8px 10px; font-size: 14px; width: 100%;
+  }
+  .autocomplete {
+    position: relative;
+  }
+  .ac-list {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 5;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+    max-height: 200px; overflow-y: auto; margin-top: 2px;
+  }
+  .ac-item {
+    padding: 6px 12px; cursor: pointer;
+  }
+  .ac-item:hover, .ac-item.active { background: #262c36; }
+
+  /* Detail view */
+  .detail .modal { max-width: 900px; }
+  .detail-hd { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+  .detail-hd .ticker { font-size: 24px; font-weight: 700; }
+  .detail-hd .price { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .detail-hd .change { font-size: 14px; }
+  .up { color: var(--strong); }
+  .down { color: var(--danger); }
+  .detail-grid {
+    display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-top: 12px;
+  }
+  @media (max-width: 700px) {
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+  .chart-wrap { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; height: 300px; position: relative; }
+  .side { display: flex; flex-direction: column; gap: 12px; }
+  .card {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .factor-bar { display: grid; grid-template-columns: 70px 1fr 34px; gap: 8px; align-items: center; margin: 4px 0; font-size: 12px; }
+  .factor-bar .bar { background: var(--bg); border-radius: 2px; height: 8px; overflow: hidden; }
+  .factor-bar .fill { background: var(--accent); height: 100%; border-radius: 2px; }
+  .factor-bar .val { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .trigger-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .trigger-row:last-child { border: none; }
+  .trigger-row .label { color: var(--muted); }
+  .trigger-row .price { font-variant-numeric: tabular-nums; }
+  .trigger-row .dist { color: var(--muted); font-size: 11px; margin-left: 6px; }
+
+  /* Mobile card view */
+  .cards-mobile { display: none; flex-direction: column; gap: 8px; }
+  @media (max-width: 700px) {
+    table { display: none; }
+    .cards-mobile { display: flex; }
+    .meta { width: 100%; margin-left: 0; }
+  }
+  .mcard {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; cursor: pointer;
+  }
+  .mcard-hd { display: flex; justify-content: space-between; align-items: baseline; }
+  .mcard-hd .t { font-weight: 700; font-size: 16px; }
+  .mcard-hd .p { font-variant-numeric: tabular-nums; }
+  .mcard-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-row">
+    <div class="brand">📈 JY Fund <span class="sub">Signal</span></div>
+    <select id="groupSelect" class="group-select" aria-label="그룹 선택"></select>
+    <button id="manageBtn" class="btn">⚙ 그룹 관리</button>
+    <div class="meta">
+      <span class="market" id="marketInfo"></span>
+      <span id="updatedAt">—</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="tableWrap">
+    <table id="scanner">
+      <thead>
+        <tr>
+          <th data-sort="ticker">종목</th>
+          <th data-sort="score" class="num">Score</th>
+          <th data-sort="state">State</th>
+          <th data-sort="price" class="num">Price</th>
+          <th data-sort="change" class="num">1D</th>
+          <th data-sort="rvol" class="num">RVOL</th>
+          <th data-sort="early">Trigger (EARLY)</th>
+          <th data-sort="dist" class="num">거리</th>
+          <th data-sort="quality">Vol Q</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="cardsMobile" class="cards-mobile"></div>
+    <div id="empty" class="empty" style="display:none">
+      그룹에 종목이 없습니다. <b>⚙ 그룹 관리</b>에서 종목을 추가하세요.
+    </div>
+  </div>
+</main>
+
+<!-- 그룹 관리 모달 -->
+<div id="groupModal" class="overlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <h2>그룹 관리</h2>
+      <button class="close" data-close>×</button>
+    </div>
+    <div class="modal-bd">
+      <div id="groupList" class="group-list"></div>
+      <button id="newGroupBtn" class="btn">+ 새 그룹 만들기</button>
+
+      <div class="divider"></div>
+
+      <div id="editArea" style="display:none">
+        <label style="font-size:12px;color:var(--muted)">그룹 이름</label>
+        <input id="editName" class="text" type="text" style="margin:6px 0 12px">
+
+        <label style="font-size:12px;color:var(--muted)">종목 (${count}개)</label>
+        <div id="editChips" class="ticker-chips"></div>
+
+        <div class="autocomplete">
+          <input id="tickerAdd" class="text" type="text" placeholder="종목 추가 (universe에서 검색: NVDA...)" autocomplete="off">
+          <div id="acList" class="ac-list" style="display:none"></div>
+        </div>
+        <div id="notInUniverse" style="margin-top:8px;font-size:12px;color:var(--watch);display:none"></div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 종목 상세 모달 -->
+<div id="detailModal" class="overlay detail">
+  <div class="modal">
+    <div class="modal-hd">
+      <h2 id="detailTitle">—</h2>
+      <button class="close" data-close>×</button>
+    </div>
+    <div class="modal-bd">
+      <div id="detailBody"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA_URL = "data/data.json";
+const UNIV_URL = "data/universe.json";
+const LS_GROUPS = "jyfund_groups";
+const LS_SELECTED = "jyfund_selected_group";
+const STATE_ORDER = { STRONG: 0, ACTIONABLE: 1, READY: 2, WATCH: 3, PASS: 4 };
+
+let DATA = null;
+let UNIVERSE = [];
+let GROUPS = [];
+let SELECTED = null;
+let SORT = { key: "state", asc: true };
+let EDIT_GROUP = null;
+let CHART = null;
+
+// ────────── init ──────────
+async function boot() {
+  try {
+    const [dRes, uRes] = await Promise.all([fetch(DATA_URL, {cache:"no-store"}), fetch(UNIV_URL, {cache:"no-store"})]);
+    DATA = await dRes.json();
+    const uJson = await uRes.json();
+    UNIVERSE = uJson.tickers || [];
+  } catch (e) {
+    document.getElementById("empty").innerHTML = "데이터 로드 실패. GitHub Actions가 첫 실행을 마칠 때까지 잠시 기다려 주세요.";
+    document.getElementById("empty").style.display = "block";
+    document.querySelector("table").style.display = "none";
+    console.error(e);
+    return;
+  }
+  loadGroups();
+  renderMeta();
+  renderGroupSelect();
+  render();
+  bindEvents();
+}
+
+// ────────── groups (localStorage) ──────────
+function loadGroups() {
+  try {
+    GROUPS = JSON.parse(localStorage.getItem(LS_GROUPS) || "[]");
+  } catch { GROUPS = []; }
+  if (!GROUPS.length) {
+    GROUPS = [{ id: "default", name: "Default", tickers: ["NVDA","GOOGL","MSFT"] }];
+    saveGroups();
+  }
+  SELECTED = localStorage.getItem(LS_SELECTED) || GROUPS[0].id;
+  if (!GROUPS.find(g => g.id === SELECTED)) SELECTED = GROUPS[0].id;
+}
+function saveGroups() { localStorage.setItem(LS_GROUPS, JSON.stringify(GROUPS)); }
+function saveSelected() { localStorage.setItem(LS_SELECTED, SELECTED); }
+function currentGroup() { return GROUPS.find(g => g.id === SELECTED); }
+
+// ────────── header ──────────
+function renderMeta() {
+  const dt = DATA.updatedAt ? new Date(DATA.updatedAt) : null;
+  const kst = dt ? new Date(dt.getTime() + 9*3600*1000).toISOString().replace("T"," ").slice(0,16) : "—";
+  document.getElementById("updatedAt").textContent = "업데이트 " + kst + " KST";
+  const m = DATA.market || {};
+  const vix = m.vix?.value;
+  const spy = m.spy?.price;
+  const spy20 = m.spy?.change20d;
+  const parts = [];
+  if (spy != null) {
+    const cls = (spy20 ?? 0) >= 0 ? "up" : "down";
+    parts.push(`SPY <span class="${cls}">${spy} (${spy20>=0?"+":""}${spy20?.toFixed(1)}%)</span>`);
+  }
+  if (vix != null) parts.push(`VIX ${vix}`);
+  document.getElementById("marketInfo").innerHTML = parts.join(" · ");
+}
+
+function renderGroupSelect() {
+  const sel = document.getElementById("groupSelect");
+  sel.innerHTML = "";
+  for (const g of GROUPS) {
+    const o = document.createElement("option");
+    o.value = g.id;
+    o.textContent = `${g.name} (${g.tickers.length})`;
+    if (g.id === SELECTED) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+// ────────── scanner ──────────
+function render() {
+  const g = currentGroup();
+  if (!g) return;
+  const rows = g.tickers
+    .map(t => DATA.signals?.[t])
+    .filter(Boolean);
+  const missing = g.tickers.filter(t => !DATA.signals?.[t]);
+  const sorted = sortRows(rows);
+  const tbody = document.getElementById("rows");
+  const mob = document.getElementById("cardsMobile");
+  const empty = document.getElementById("empty");
+  if (!g.tickers.length) {
+    tbody.innerHTML = ""; mob.innerHTML = "";
+    empty.style.display = "block";
+    empty.innerHTML = "그룹에 종목이 없습니다. <b>⚙ 그룹 관리</b>에서 종목을 추가하세요.";
+    return;
+  }
+  empty.style.display = missing.length && !rows.length ? "block" : "none";
+  if (missing.length && !rows.length) {
+    empty.innerHTML = `이 종목들은 universe에 없어 스캔되지 않습니다: <b>${missing.join(", ")}</b>. 그룹 관리에서 제거하거나, universe.json에 추가하세요.`;
+  }
+  tbody.innerHTML = sorted.map(rowHTML).join("");
+  mob.innerHTML = sorted.map(cardHTML).join("");
+  for (const el of tbody.querySelectorAll("tr")) {
+    el.addEventListener("click", () => openDetail(el.dataset.ticker));
+  }
+  for (const el of mob.querySelectorAll(".mcard")) {
+    el.addEventListener("click", () => openDetail(el.dataset.ticker));
+  }
+}
+
+function sortRows(rows) {
+  const {key, asc} = SORT;
+  const dir = asc ? 1 : -1;
+  const get = (r) => {
+    switch(key) {
+      case "ticker": return r.ticker;
+      case "score":  return r.score;
+      case "state":  return STATE_ORDER[r.state] ?? 99;
+      case "price":  return r.price.current;
+      case "change": return r.price.change1d;
+      case "rvol":   return r.volume.rvol;
+      case "early":  return r.trigger.early;
+      case "dist":   return (r.trigger.early - r.price.current) / r.price.current;
+      case "quality":return r.volume.quality;
+      default:       return 0;
+    }
+  };
+  return [...rows].sort((a,b) => {
+    // default sort rule: state → score desc → rvol desc
+    if (key === "state") {
+      const s = (STATE_ORDER[a.state]??99) - (STATE_ORDER[b.state]??99);
+      if (s !== 0) return s * dir;
+      if (b.score !== a.score) return (b.score - a.score) * (asc ? 1 : -1);
+      return (b.volume.rvol - a.volume.rvol) * (asc ? 1 : -1);
+    }
+    const av = get(a), bv = get(b);
+    if (av < bv) return -1 * dir;
+    if (av > bv) return  1 * dir;
+    return 0;
+  });
+}
+
+function rowHTML(r) {
+  const distPct = (r.trigger.early - r.price.current) / r.price.current * 100;
+  const distStr = distPct >= 0 ? `+${distPct.toFixed(1)}%` : `${distPct.toFixed(1)}%`;
+  const triggerHit = r.price.current >= r.trigger.early;
+  const rvolCls = r.volume.rvol >= 1.5 ? "rvol-hot" : r.volume.rvol >= 1.0 ? "rvol-warm" : "rvol-cold";
+  const chgCls = r.price.change1d >= 0 ? "up" : "down";
+  return `<tr data-ticker="${r.ticker}">
+    <td class="ticker">${r.ticker}</td>
+    <td class="num"><span class="score">${r.score}</span></td>
+    <td><span class="state-pill state-${r.state}">${r.state}</span></td>
+    <td class="num">$${r.price.current}</td>
+    <td class="num ${chgCls}">${r.price.change1d>=0?"+":""}${r.price.change1d}%</td>
+    <td class="num ${rvolCls}">${r.volume.rvol}x</td>
+    <td>$${r.trigger.early} ${triggerHit?'<span class="up">✓</span>':''}</td>
+    <td class="num">${distStr}</td>
+    <td>${r.volume.quality}</td>
+  </tr>`;
+}
+
+function cardHTML(r) {
+  const distPct = (r.trigger.early - r.price.current) / r.price.current * 100;
+  const distStr = distPct >= 0 ? `+${distPct.toFixed(1)}%` : `${distPct.toFixed(1)}%`;
+  const chgCls = r.price.change1d >= 0 ? "up" : "down";
+  return `<div class="mcard" data-ticker="${r.ticker}">
+    <div class="mcard-hd">
+      <span class="t">${r.ticker}</span>
+      <span class="p">$${r.price.current} <span class="${chgCls}">${r.price.change1d>=0?"+":""}${r.price.change1d}%</span></span>
+    </div>
+    <div class="mcard-row">
+      <span><span class="state-pill state-${r.state}">${r.state}</span> · Score ${r.score}</span>
+      <span>RVOL ${r.volume.rvol}x</span>
+    </div>
+    <div class="mcard-row">
+      <span>EARLY $${r.trigger.early}</span>
+      <span>${distStr}</span>
+    </div>
+  </div>`;
+}
+
+// ────────── group modal ──────────
+function openGroupModal() {
+  EDIT_GROUP = null;
+  renderGroupList();
+  document.getElementById("editArea").style.display = "none";
+  document.getElementById("groupModal").classList.add("on");
+}
+function renderGroupList() {
+  const list = document.getElementById("groupList");
+  list.innerHTML = GROUPS.map(g => `
+    <div class="group-item">
+      <span class="name">${escapeHTML(g.name)}</span>
+      <span class="count">${g.tickers.length}개</span>
+      <button class="btn small" data-edit="${g.id}">편집</button>
+      <button class="btn small danger" data-del="${g.id}" ${GROUPS.length===1?'disabled title="마지막 그룹은 삭제할 수 없습니다"':''}>삭제</button>
+    </div>`).join("");
+  list.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openEdit(b.dataset.edit));
+  list.querySelectorAll("[data-del]").forEach(b => b.onclick = () => delGroup(b.dataset.del));
+}
+function openEdit(id) {
+  EDIT_GROUP = GROUPS.find(g => g.id === id);
+  document.getElementById("editArea").style.display = "block";
+  document.getElementById("editName").value = EDIT_GROUP.name;
+  renderEditChips();
+  document.getElementById("tickerAdd").value = "";
+  document.getElementById("acList").style.display = "none";
+  document.getElementById("notInUniverse").style.display = "none";
+}
+function renderEditChips() {
+  const wrap = document.getElementById("editChips");
+  wrap.innerHTML = EDIT_GROUP.tickers.map(t => `
+    <span class="chip">${t} <button data-rm="${t}">×</button></span>
+  `).join("") || '<span style="color:var(--muted);font-size:12px">종목 없음</span>';
+  wrap.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => {
+    EDIT_GROUP.tickers = EDIT_GROUP.tickers.filter(t => t !== b.dataset.rm);
+    saveGroups(); renderEditChips(); renderGroupList(); renderGroupSelect(); render();
+  });
+}
+function delGroup(id) {
+  if (GROUPS.length <= 1) return;
+  if (!confirm("이 그룹을 삭제하시겠습니까?")) return;
+  GROUPS = GROUPS.filter(g => g.id !== id);
+  if (SELECTED === id) { SELECTED = GROUPS[0].id; saveSelected(); }
+  saveGroups(); renderGroupList(); renderGroupSelect(); render();
+  if (EDIT_GROUP?.id === id) { EDIT_GROUP = null; document.getElementById("editArea").style.display = "none"; }
+}
+function newGroup() {
+  const id = "g" + Date.now();
+  const g = { id, name: "새 그룹", tickers: [] };
+  GROUPS.push(g);
+  saveGroups(); renderGroupList(); renderGroupSelect();
+  openEdit(id);
+}
+
+function autocomplete(q) {
+  const acList = document.getElementById("acList");
+  const notIn = document.getElementById("notInUniverse");
+  const s = q.trim().toUpperCase();
+  if (!s) { acList.style.display = "none"; notIn.style.display = "none"; return; }
+  const matches = UNIVERSE.filter(t => t.startsWith(s) && !EDIT_GROUP.tickers.includes(t)).slice(0, 8);
+  if (matches.length) {
+    acList.style.display = "block";
+    acList.innerHTML = matches.map(m => `<div class="ac-item" data-t="${m}">${m}</div>`).join("");
+    acList.querySelectorAll(".ac-item").forEach(el => el.onclick = () => addTicker(el.dataset.t));
+    notIn.style.display = "none";
+  } else {
+    acList.style.display = "none";
+    if (UNIVERSE.includes(s)) {
+      notIn.style.display = "block";
+      notIn.textContent = `${s}은(는) 이미 이 그룹에 있습니다.`;
+    } else {
+      notIn.style.display = "block";
+      notIn.innerHTML = `<b>${escapeHTML(s)}</b>은(는) 현재 universe에 없습니다. Enter 시 그룹엔 추가되지만 스캔되지 않습니다. 스캔하려면 저장소의 <code>data/universe.json</code>에 추가하세요.`;
+    }
+  }
+}
+function addTicker(t) {
+  if (!EDIT_GROUP.tickers.includes(t)) EDIT_GROUP.tickers.push(t);
+  saveGroups();
+  document.getElementById("tickerAdd").value = "";
+  document.getElementById("acList").style.display = "none";
+  document.getElementById("notInUniverse").style.display = "none";
+  renderEditChips(); renderGroupList(); renderGroupSelect(); render();
+}
+
+// ────────── detail modal ──────────
+function openDetail(ticker) {
+  const r = DATA.signals?.[ticker];
+  if (!r) return;
+  document.getElementById("detailTitle").textContent = ticker + " · " + r.state;
+  const body = document.getElementById("detailBody");
+  const distE = ((r.trigger.early - r.price.current) / r.price.current * 100).toFixed(1);
+  const distC = ((r.trigger.confirm - r.price.current) / r.price.current * 100).toFixed(1);
+  const distT = ((r.trigger.trend - r.price.current) / r.price.current * 100).toFixed(1);
+  const distI = ((r.trigger.invalidation - r.price.current) / r.price.current * 100).toFixed(1);
+  const chgCls = r.price.change1d >= 0 ? "up" : "down";
+  const factors = r.factors;
+  const maxes = {trend:20, pullback:15, volume:15, reversal:15, rs:10, market:10, rr:15};
+  const factorLabels = {trend:"Trend", pullback:"Pullback", volume:"Volume", reversal:"Reversal", rs:"Rel Strength", market:"Market", rr:"R:R"};
+  const factorHTML = Object.keys(maxes).map(k => {
+    const pct = (factors[k] / maxes[k]) * 100;
+    return `<div class="factor-bar">
+      <span>${factorLabels[k]}</span>
+      <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
+      <span class="val">${factors[k]}/${maxes[k]}</span>
+    </div>`;
+  }).join("");
+
+  body.innerHTML = `
+    <div class="detail-hd">
+      <span class="ticker">${ticker}</span>
+      <span class="price">$${r.price.current}</span>
+      <span class="change ${chgCls}">${r.price.change1d>=0?"+":""}${r.price.change1d}%</span>
+      <span style="margin-left:auto"><span class="state-pill state-${r.state}">${r.state}</span> · Score ${r.score} · ${r.confidence}</span>
+    </div>
+    <div class="detail-grid">
+      <div class="chart-wrap"><canvas id="detailChart"></canvas></div>
+      <div class="side">
+        <div class="card">
+          <h3>Factor Breakdown</h3>
+          ${factorHTML}
+        </div>
+        <div class="card">
+          <h3>Trigger Prices</h3>
+          <div class="trigger-row"><span class="label">EARLY (MA20)</span><span><span class="price">$${r.trigger.early}</span><span class="dist">${distE>=0?"+":""}${distE}%</span></span></div>
+          <div class="trigger-row"><span class="label">CONFIRM (20d high)</span><span><span class="price">$${r.trigger.confirm}</span><span class="dist">${distC>=0?"+":""}${distC}%</span></span></div>
+          <div class="trigger-row"><span class="label">TREND target</span><span><span class="price">$${r.trigger.trend}</span><span class="dist">${distT>=0?"+":""}${distT}%</span></span></div>
+          <div class="trigger-row"><span class="label">Invalidation</span><span class="down"><span class="price">$${r.trigger.invalidation}</span><span class="dist">${distI>=0?"+":""}${distI}%</span></span></div>
+        </div>
+        <div class="card">
+          <h3>MA / Volume</h3>
+          <div class="trigger-row"><span class="label">MA20</span><span class="price">$${r.price.ma20 ?? "—"}</span></div>
+          <div class="trigger-row"><span class="label">MA50</span><span class="price">$${r.price.ma50 ?? "—"}</span></div>
+          <div class="trigger-row"><span class="label">MA200</span><span class="price">$${r.price.ma200 ?? "—"}</span></div>
+          <div class="trigger-row"><span class="label">RVOL</span><span class="price">${r.volume.rvol}x</span></div>
+          <div class="trigger-row"><span class="label">Vol Quality</span><span>${r.volume.quality}</span></div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById("detailModal").classList.add("on");
+  requestAnimationFrame(() => drawChart(r));
+}
+
+function drawChart(r) {
+  if (CHART) { CHART.destroy(); CHART = null; }
+  const ctx = document.getElementById("detailChart").getContext("2d");
+  const labels = r.chart.labels;
+  const close = r.chart.close;
+  const ma20 = movingAvg(close, 20);
+  const ma50 = movingAvg(close, 50);
+  const ma200 = movingAvg(close, 200);
+  CHART = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Close", data: close, borderColor: "#e6edf3", borderWidth: 1.5, pointRadius: 0, tension: 0 },
+        { label: "MA20", data: ma20, borderColor: "#58a6ff", borderWidth: 1, pointRadius: 0, borderDash: [4,3] },
+        { label: "MA50", data: ma50, borderColor: "#d29922", borderWidth: 1, pointRadius: 0, borderDash: [4,3] },
+        { label: "MA200", data: ma200, borderColor: "#f85149", borderWidth: 1, pointRadius: 0, borderDash: [4,3] },
+      ]
+    },
+    options: {
+      maintainAspectRatio: false,
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { labels: { color: "#8b949e", boxWidth: 12, font: {size: 11}}, position: "bottom" },
+        tooltip: { backgroundColor: "#161b22", borderColor: "#30363d", borderWidth: 1 },
+      },
+      scales: {
+        x: { ticks: { color: "#8b949e", maxTicksLimit: 6, autoSkip: true }, grid: { color: "#21262d" } },
+        y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" }, position: "right" },
+      }
+    }
+  });
+}
+
+function movingAvg(arr, period) {
+  const out = new Array(arr.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < arr.length; i++) {
+    sum += arr[i];
+    if (i >= period) sum -= arr[i - period];
+    if (i >= period - 1) out[i] = +(sum / period).toFixed(2);
+  }
+  return out;
+}
+
+// ────────── events ──────────
+function bindEvents() {
+  document.getElementById("groupSelect").onchange = (e) => {
+    SELECTED = e.target.value; saveSelected(); render();
+  };
+  document.getElementById("manageBtn").onclick = openGroupModal;
+  document.getElementById("newGroupBtn").onclick = newGroup;
+
+  document.querySelectorAll("[data-close]").forEach(b => b.onclick = (e) => {
+    e.target.closest(".overlay").classList.remove("on");
+    if (CHART) { CHART.destroy(); CHART = null; }
+  });
+  document.querySelectorAll(".overlay").forEach(o => o.onclick = (e) => {
+    if (e.target === o) { o.classList.remove("on"); if (CHART) { CHART.destroy(); CHART = null; } }
+  });
+
+  document.getElementById("editName").addEventListener("input", (e) => {
+    if (!EDIT_GROUP) return;
+    EDIT_GROUP.name = e.target.value || "이름 없음";
+    saveGroups(); renderGroupList(); renderGroupSelect();
+  });
+
+  const acInput = document.getElementById("tickerAdd");
+  acInput.addEventListener("input", (e) => autocomplete(e.target.value));
+  acInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const s = acInput.value.trim().toUpperCase();
+      if (s) addTicker(s);
+    }
+  });
+
+  document.querySelectorAll("th[data-sort]").forEach(th => th.onclick = () => {
+    const k = th.dataset.sort;
+    if (SORT.key === k) SORT.asc = !SORT.asc;
+    else { SORT.key = k; SORT.asc = (k === "state" || k === "ticker" || k === "dist"); }
+    render();
+  });
+}
+
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+boot();
+</script>
+</body>
+</html>

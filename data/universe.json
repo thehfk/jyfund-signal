@@ -1,0 +1,12 @@
+{
+  "updatedAt": "2026-08-21T00:00:00Z",
+  "note": "S&P500 top ~30 by market cap + interest tech. Edit this file to add/remove tickers.",
+  "tickers": [
+    "NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO", "TSLA",
+    "LLY", "WMT", "JPM", "V", "XOM", "MA", "ORCL", "UNH",
+    "JNJ", "PG", "COST", "HD", "ABBV", "BAC", "KO", "NFLX",
+    "CVX", "TMO", "ADBE", "MRK", "CRM", "PEP",
+    "AMD", "PLTR", "SNOW", "CRWD", "PANW", "SHOP", "UBER", "ARM",
+    "MU", "TSM", "ASML", "NOW", "INTC", "COIN"
+  ]
+}
