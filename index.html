@@ -189,6 +189,9 @@
   .trigger-row .label { color: var(--muted); }
   .trigger-row .price { font-variant-numeric: tabular-nums; }
   .trigger-row .dist { color: var(--muted); font-size: 11px; margin-left: 6px; }
+  .summary-card { margin-top: 16px; }
+  .summary-card p { margin: 6px 0; font-size: 13px; line-height: 1.7; color: var(--text); }
+  .summary-card p:last-child { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 
   /* Mobile card view */
   .cards-mobile { display: none; flex-direction: column; gap: 8px; }
@@ -961,6 +964,84 @@ function addTicker(t) {
 }
 
 // ────────── detail modal ──────────
+function buildSummary(r) {
+  const p = r.price, v = r.volume, f = r.factors, t = r.trigger;
+  const distEarly = (t.early - p.current) / p.current * 100;
+  const parts = [];
+
+  // 1) 추세 진단
+  let trend;
+  if (f.trend >= 18)      trend = "이동평균선(MA20/50/200)이 완벽하게 위→아래 정렬돼 <b>상승 추세가 뚜렷</b>합니다.";
+  else if (f.trend >= 12) trend = "중기 추세는 살아있지만 장기 추세(MA200)는 아직 완전히 회복되지 않았습니다.";
+  else if (f.trend >= 6)  trend = "이동평균선 배열이 어중간해서 방향성 판단이 어려운 상태입니다.";
+  else                    trend = "이동평균선이 <b>역배열된 하락 추세</b>입니다. 매수 자리로 보기 어려움.";
+  parts.push(trend);
+
+  // 2) 현재 위치 (트리거 대비)
+  let pos;
+  if (Math.abs(distEarly) <= 3 && f.pullback >= 12) {
+    pos = `현재가가 EARLY 트리거 <b>$${t.early}</b> 근처(±3%)이면서 얕은 눌림목 위치입니다. <b>이상적인 매수 대기 자리</b>.`;
+  } else if (distEarly <= -8 && f.pullback < 8) {
+    pos = `현재가가 EARLY 트리거 <b>$${t.early}</b>를 <b>${Math.abs(distEarly).toFixed(1)}% 위</b>로 급등한 상태입니다. 이미 오른 뒤라 지금 진입은 늦을 위험이 있음.`;
+  } else if (distEarly < 0) {
+    pos = `현재가가 EARLY 트리거 <b>$${t.early}</b>보다 <b>${Math.abs(distEarly).toFixed(1)}% 위</b>에 있습니다.`;
+  } else if (distEarly <= 3) {
+    pos = `EARLY 트리거 <b>$${t.early}</b>까지 <b>+${distEarly.toFixed(1)}%</b>. 근접했습니다.`;
+  } else {
+    pos = `EARLY 트리거까지 <b>+${distEarly.toFixed(1)}%</b>. 아직 거리가 있습니다.`;
+  }
+  parts.push(pos);
+
+  // 3) 촉발 신호 (거래량 + 반등 캔들)
+  const rev = f.reversal >= 10;
+  const volStrong = v.rvol >= 1.5 && v.quality === "STRONG";                 // 대량 + 양봉
+  const volHighMixed = v.rvol >= 1.5 && v.quality !== "STRONG";              // 대량 + 음봉 = 분배 신호
+  const volModerate = v.rvol >= 1.2 && !volStrong && !volHighMixed;
+  const volWeak = v.rvol < 0.7;
+  let trig;
+  if (volStrong && rev)       trig = `오늘 RVOL <b>${v.rvol}x</b>로 거래 폭발 + 반등 캔들 확인. <b>촉발 완료</b>.`;
+  else if (volStrong)         trig = `오늘 RVOL <b>${v.rvol}x</b> + 양봉으로 매수세 확실히 유입. 진입 신호.`;
+  else if (volHighMixed)      trig = `RVOL <b>${v.rvol}x</b>로 거래량은 폭발했지만 음봉으로 마감. <b>분배(매도세) 신호일 가능성</b>이라 신중.`;
+  else if (volModerate && rev) trig = `RVOL ${v.rvol}x + 반등 캔들. 약한 촉발 신호 있음.`;
+  else if (volModerate)       trig = `RVOL ${v.rvol}x로 거래량은 평균 이상이지만 캔들 확인은 부족.`;
+  else if (rev)               trig = `반등 캔들이 나왔지만 거래량 확인이 부족합니다 (RVOL ${v.rvol}x).`;
+  else if (volWeak)           trig = `오늘 RVOL <b>${v.rvol}x</b>로 매수세 저조 + 반등 캔들 없음. 촉발 신호 미출현.`;
+  else                        trig = `거래·캔들에서 확실한 촉발 신호는 없습니다 (RVOL ${v.rvol}x).`;
+  parts.push(trig);
+
+  // 4) 상대 강도 · 시장 (선택 조건)
+  const extras = [];
+  if (f.rs >= 8)      extras.push("시장(SPY) 대비 <b>상대 강도 우수</b>.");
+  else if (f.rs <= 2) extras.push("시장 대비 <b>소외된 흐름</b>.");
+  if (f.market <= 3)  extras.push("시장 환경도 좋지 않음.");
+  if (f.rr <= 5)      extras.push("손절선까지 거리가 멀어 <b>손익비가 나쁨</b>.");
+  if (extras.length) parts.push(extras.join(" "));
+
+  // 5) 액션 가이드
+  let action;
+  switch (r.state) {
+    case "STRONG":
+      action = `<b>👉 지금 진입 가능한 자리.</b> Trigger 가격과 손절선 $${t.invalidation}로 포지션 사이즈 계산.`;
+      break;
+    case "ACTIONABLE":
+      action = `<b>👉 매수 준비 완료.</b> 트리거 근접 시 진입, 손절선 $${t.invalidation}.`;
+      break;
+    case "READY":
+      action = `<b>👉 조건은 성숙, 촉발 대기 중.</b> RVOL 1.5x 이상 양봉이 나오면 STRONG으로 승격됨. 지금은 지켜보기.`;
+      break;
+    case "WATCH":
+      action = `<b>👉 관망.</b> 상황 개선(추세 회복 · 거래량 유입) 지켜보기.`;
+      break;
+    case "PASS":
+      action = `<b>👉 지금 매수 자리 아님.</b> 다른 종목 검토하거나 상황 변화 대기.`;
+      break;
+    default: action = "";
+  }
+  parts.push(action);
+
+  return parts.map(s => `<p>${s}</p>`).join("");
+}
+
 function openDetail(ticker) {
   const r = DATA.signals?.[ticker];
   if (!r) return;
@@ -1013,6 +1094,10 @@ function openDetail(ticker) {
           <div class="trigger-row"><span class="label">Vol Quality</span><span>${r.volume.quality}</span></div>
         </div>
       </div>
+    </div>
+    <div class="card summary-card">
+      <h3>종합 진단</h3>
+      ${buildSummary(r)}
     </div>
   `;
   document.getElementById("detailModal").classList.add("on");
