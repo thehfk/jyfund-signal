@@ -615,15 +615,15 @@ function saveGroups() {
 }
 
 function saveSelected() {
-  // 그룹 선택은 뷰어에게도 로컬 저장 (개인 취향, 서버 반영 X)
+  // 그룹 선택은 순수 로컬 UI 상태 (기기별 개인 취향).
+  // updatedAt 갱신·서버 sync 절대 하지 않음 — 안 그러면 아무 조작 없이
+  // 그룹 드롭다운만 바꿔도 로컬이 '최신'으로 오인돼 다른 기기 편집분을 덮어씀.
   const raw = localStorage.getItem(LS_GROUPS_V2);
-  const cur = raw ? JSON.parse(raw) : { groups: GROUPS };
+  const cur = raw ? JSON.parse(raw) : { groups: GROUPS, updatedAt: new Date(0).toISOString() };
   cur.selectedGroupId = SELECTED;
-  if (isAdmin()) {
-    cur.updatedAt = new Date().toISOString();
-  }
+  // cur.updatedAt은 그대로 유지 (편집 아님)
   localStorage.setItem(LS_GROUPS_V2, JSON.stringify(cur));
-  if (isAdmin()) scheduleSync();
+  // scheduleSync 호출하지 않음
 }
 
 function currentGroup() { return GROUPS.find(g => g.id === SELECTED); }
