@@ -193,7 +193,7 @@
   /* Mobile card view */
   .cards-mobile { display: none; flex-direction: column; gap: 8px; }
   @media (max-width: 700px) {
-    table { display: none; }
+    #scanner { display: none; }   /* 스캐너 테이블만 숨기고 카드 뷰로 대체 (help 모달의 설명 테이블은 유지) */
     .cards-mobile { display: flex; }
     .meta { width: 100%; margin-left: 0; }
   }
