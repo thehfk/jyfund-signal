@@ -723,9 +723,11 @@ function drawChart(r) {
   const ctx = document.getElementById("detailChart").getContext("2d");
   const labels = r.chart.labels;
   const close = r.chart.close;
-  const ma20 = movingAvg(close, 20);
-  const ma50 = movingAvg(close, 50);
-  const ma200 = movingAvg(close, 200);
+  // MA는 백엔드가 전체 히스토리로 미리 계산한 값을 사용 (MA200이 200일 내내 그려지도록).
+  // 구버전 data.json 폴백을 위해 없으면 프론트에서 계산.
+  const ma20  = r.chart.ma20  || movingAvg(close, 20);
+  const ma50  = r.chart.ma50  || movingAvg(close, 50);
+  const ma200 = r.chart.ma200 || movingAvg(close, 200);
   CHART = new Chart(ctx, {
     type: "line",
     data: {

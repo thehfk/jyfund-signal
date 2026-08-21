@@ -85,6 +85,19 @@ def sma(series: list[float], period: int) -> float | None:
     return sum(series[-period:]) / period
 
 
+def rolling_sma(series: list[float], period: int) -> list[float | None]:
+    """각 인덱스마다 그 시점까지의 period일 SMA. 앞쪽 (period-1)개는 None."""
+    out: list[float | None] = [None] * len(series)
+    if len(series) < period:
+        return out
+    window_sum = sum(series[:period])
+    out[period - 1] = window_sum / period
+    for i in range(period, len(series)):
+        window_sum += series[i] - series[i - period]
+        out[i] = window_sum / period
+    return out
+
+
 def slope_pct(series: list[float], period: int) -> float | None:
     """period 전 SMA 대비 현재 SMA 변화율(%)."""
     if len(series) < period * 2:
@@ -358,12 +371,22 @@ def analyze_ticker(
     ma200 = sma(c, 200)
     avg20_v = sum(v[-21:-1]) / 20 if len(v) >= 21 else None
 
-    # 차트용 200일 데이터 (프론트 부담 완화 위해 t/c/v 만)
+    # 차트용 200일 데이터. MA200이 200일 내내 그려지도록 전체 히스토리로 MA 계산 후 마지막 200일만 슬라이스.
     tail = 200
+    ma20_series = rolling_sma(c, 20)
+    ma50_series = rolling_sma(c, 50)
+    ma200_series = rolling_sma(c, 200)
+
+    def _round(x: float | None) -> float | None:
+        return round(x, 2) if x is not None else None
+
     chart = {
         "labels": ohlcv["t"][-tail:],
         "close": c[-tail:],
         "volume": v[-tail:],
+        "ma20": [_round(x) for x in ma20_series[-tail:]],
+        "ma50": [_round(x) for x in ma50_series[-tail:]],
+        "ma200": [_round(x) for x in ma200_series[-tail:]],
     }
 
     return {
@@ -419,7 +442,7 @@ def main() -> int:
     failures: list[str] = []
 
     for t in tickers:
-        d = fetch_ohlcv(t, "1y", "1d")
+        d = fetch_ohlcv(t, "2y", "1d")
         if not d:
             print(f"  ⚠ {t} fetch 실패")
             failures.append(t)
