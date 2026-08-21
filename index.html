@@ -336,6 +336,9 @@
       <div class="status-block">
         <div class="label">현재 상태</div>
         <div id="syncStatusDetail">—</div>
+        <div class="row" style="margin-top:8px">
+          <button id="forceRefreshBtn" class="btn small" title="서버(저장소)의 최신 그룹을 강제로 다시 가져옵니다 (로컬 편집분 덮어씀)">🔄 서버 최신본 강제 로드</button>
+        </div>
       </div>
 
       <h3>비밀번호</h3>
@@ -456,7 +459,10 @@
 <script>
 const DATA_URL = "data/data.json";
 const UNIV_URL = "data/universe.json";
-const GROUPS_URL = "data/groups.json";
+// groups.json은 반드시 최신본이 필요하므로 GitHub Pages CDN(5~10분 캐시) 우회하고
+// raw.githubusercontent.com에서 직접 fetch. 실패 시 Pages 폴백.
+const GROUPS_URL_RAW = "https://raw.githubusercontent.com/thehfk/jyfund-signal/main/data/groups.json";
+const GROUPS_URL_PAGES = "data/groups.json";
 const LS_GROUPS = "jyfund_groups";           // legacy (배열)
 const LS_SELECTED = "jyfund_selected_group"; // legacy
 const LS_GROUPS_V2 = "jyfund_groups_v2";     // { updatedAt, groups, selectedGroupId }
@@ -528,11 +534,17 @@ function readLocalV2() {
 }
 
 async function fetchRemoteGroups() {
+  // 1순위: raw.githubusercontent.com (CDN 캐시 짧음, cachebuster 존중)
   try {
-    const r = await fetch(GROUPS_URL + "?t=" + Date.now(), {cache:"no-store"});
-    if (!r.ok) return null;
-    return await r.json();
-  } catch { return null; }
+    const r = await fetch(GROUPS_URL_RAW + "?t=" + Date.now(), {cache:"no-store"});
+    if (r.ok) return await r.json();
+  } catch {}
+  // 2순위: Pages 경로 (raw가 rate limit 또는 네트워크 오류 시)
+  try {
+    const r = await fetch(GROUPS_URL_PAGES + "?t=" + Date.now(), {cache:"no-store"});
+    if (r.ok) return await r.json();
+  } catch {}
+  return null;
 }
 
 async function loadGroupsMerged() {
@@ -621,6 +633,30 @@ function scheduleSync() {
   if (SYNC_TIMER) clearTimeout(SYNC_TIMER);
   setSyncBadge("pending");
   SYNC_TIMER = setTimeout(pushToWorker, 3000);
+}
+
+// 탭 닫기 · 앱 백그라운드 진입 시 대기 중인 sync를 즉시 flush
+// (기본 3초 debounce 사이에 브라우저 닫으면 편집이 서버까지 못 가는 문제 방지)
+function flushPendingSyncNow() {
+  if (!SYNC_TIMER) return;               // 대기 중인 push 없음
+  if (!isAdmin()) return;
+  clearTimeout(SYNC_TIMER);
+  SYNC_TIMER = null;
+  // keepalive: true → 탭 닫혀도 요청 완주 (Fetch spec 표준)
+  const session = localStorage.getItem(LS_SESSION);
+  const raw = localStorage.getItem(LS_GROUPS_V2);
+  if (!session || !raw || !WORKER_URL) return;
+  try {
+    fetch(WORKER_URL.replace(/\/$/, "") + "/groups", {
+      method: "PUT",
+      headers: {
+        "Authorization": "Bearer " + session,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(JSON.parse(raw)),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {}
 }
 
 function setSyncBadge(state, detailText) {
@@ -733,6 +769,34 @@ async function loginSubmit() {
     if (SYNC_TIMER) { clearTimeout(SYNC_TIMER); pushToWorker(); }
   } catch (e) {
     errEl.textContent = "로그인 실패: " + e.message;
+  }
+}
+
+async function forceRefreshGroups() {
+  const btn = document.getElementById("forceRefreshBtn");
+  const original = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = "가져오는 중..."; }
+  try {
+    const remote = await fetchRemoteGroups();
+    if (!remote || !remote.groups?.length) {
+      alert("서버에서 그룹을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+    // 로컬을 서버 것으로 덮어씀 (updatedAt까지 그대로)
+    GROUPS = remote.groups;
+    SELECTED = remote.selectedGroupId && GROUPS.find(g => g.id === remote.selectedGroupId)
+      ? remote.selectedGroupId : GROUPS[0].id;
+    localStorage.setItem(LS_GROUPS_V2, JSON.stringify({
+      updatedAt: remote.updatedAt,
+      groups: GROUPS,
+      selectedGroupId: SELECTED,
+    }));
+    renderGroupSelect(); render();
+    setSyncBadge("ok", `서버 최신본 로드 완료 (updatedAt ${remote.updatedAt?.slice(0,19).replace("T"," ")}Z).`);
+  } catch (e) {
+    alert("오류: " + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
   }
 }
 
@@ -1163,6 +1227,13 @@ function bindEvents() {
   document.getElementById("adminLoginBtn").onclick = openSyncModal;
   document.getElementById("patSaveBtn").onclick = loginSubmit;
   document.getElementById("patClearBtn").onclick = logoutAdmin;
+  document.getElementById("forceRefreshBtn")?.addEventListener("click", forceRefreshGroups);
+  // 탭 닫기 / 앱 백그라운드 → 대기 중인 sync 즉시 flush
+  window.addEventListener("beforeunload", flushPendingSyncNow);
+  window.addEventListener("pagehide", flushPendingSyncNow);            // iOS Safari
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushPendingSyncNow();
+  });
   document.getElementById("patInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); loginSubmit(); }
   });
