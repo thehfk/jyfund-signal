@@ -221,6 +221,28 @@
   .help details summary { cursor: pointer; font-weight: 500; color: var(--text); }
   .help details[open] summary { margin-bottom: 8px; }
   .help code { background: var(--bg); padding: 1px 6px; border-radius: 3px; font-size: 12px; color: var(--accent); }
+
+  /* Sync status pill */
+  .sync-idle    { color: var(--muted); }
+  .sync-pending { color: var(--ready); }
+  .sync-syncing { color: var(--ready); }
+  .sync-ok      { color: var(--strong); }
+  .sync-error   { color: var(--danger); }
+  .sync-no-pat  { color: var(--watch); }
+
+  /* PAT modal */
+  .sync-modal .modal { max-width: 640px; }
+  .sync-modal ol { padding-left: 20px; margin: 8px 0; }
+  .sync-modal ol li { margin: 4px 0; font-size: 13px; }
+  .sync-modal h3 { margin: 18px 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .sync-modal h3:first-child { margin-top: 0; }
+  .sync-modal code { background: var(--bg); padding: 1px 6px; border-radius: 3px; font-size: 12px; color: var(--accent); }
+  .sync-modal a { color: var(--accent); text-decoration: underline; }
+  .sync-modal .row { display: flex; gap: 8px; margin-top: 10px; }
+  .sync-modal .row .btn { flex-shrink: 0; }
+  .sync-modal .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .sync-modal .status-block { margin-top: 14px; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+  .sync-modal .status-block .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
 </style>
 </head>
 <body>
@@ -231,6 +253,7 @@
     <select id="groupSelect" class="group-select" aria-label="그룹 선택"></select>
     <button id="manageBtn" class="btn">⚙ 그룹 관리</button>
     <button id="helpBtn" class="btn" title="지표 설명">❓ 지표 설명</button>
+    <button id="syncStatus" class="btn small sync-idle" title="동기화 설정 열기">☁ 확인 중</button>
     <div class="meta">
       <span class="market" id="marketInfo"></span>
       <span id="updatedAt">—</span>
@@ -289,6 +312,52 @@
         </div>
         <div id="notInUniverse" style="margin-top:8px;font-size:12px;color:var(--watch);display:none"></div>
       </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 동기화(PAT) 설정 모달 -->
+<div id="syncModal" class="overlay sync-modal">
+  <div class="modal">
+    <div class="modal-hd">
+      <h2>동기화 설정</h2>
+      <button class="close" data-close>×</button>
+    </div>
+    <div class="modal-bd">
+      <p>이 브라우저에서 그룹을 편집하면 GitHub 저장소의 <code>data/groups.json</code>에 자동 커밋됩니다. 다른 기기에서 사이트를 열면 같은 그룹이 자동으로 로드돼요.</p>
+
+      <div class="status-block">
+        <div class="label">현재 상태</div>
+        <div id="syncStatusDetail">—</div>
+      </div>
+
+      <h3>1. GitHub Personal Access Token 만들기</h3>
+      <ol>
+        <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">여기 클릭</a> → Fine-grained PAT 만들기 페이지 열림</li>
+        <li>Token name: <code>jyfund-signal-sync</code></li>
+        <li>Expiration: 원하시는 기간 (권장: 1년)</li>
+        <li>Resource owner: <b>thehfk</b></li>
+        <li>Repository access: <b>Only select repositories</b> → <code>jyfund-signal</code> 선택</li>
+        <li>Permissions → Repository permissions → <b>Contents: Read and write</b> 로 설정</li>
+        <li><b>Generate token</b> → 만들어진 토큰(<code>github_pat_...</code>) 복사</li>
+      </ol>
+
+      <h3>2. 여기 붙여넣기</h3>
+      <input id="patInput" class="text" type="password" placeholder="github_pat_... 또는 ghp_...">
+      <div class="row">
+        <button id="patSaveBtn" class="btn primary">저장 + 즉시 동기화</button>
+        <button id="patClearBtn" class="btn danger">토큰 삭제</button>
+      </div>
+      <p class="note">토큰은 이 브라우저의 localStorage에 저장되며, GitHub API 외 다른 서버로 전송되지 않습니다. 다른 사람이 이 브라우저에 접근할 수 있으면 삭제해 주세요.</p>
+
+      <h3>주의사항</h3>
+      <ul style="padding-left:20px;font-size:12px;color:var(--muted);margin:6px 0">
+        <li>GitHub Pages는 캐시가 있어서 다른 기기에 반영까지 최대 <b>5~10분</b> 걸릴 수 있습니다.</li>
+        <li>두 기기에서 동시에 편집하면 나중 편집이 이깁니다 (충돌 시 자동 재시도).</li>
+      </ul>
     </div>
     <div class="modal-ft">
       <button class="btn" data-close>닫기</button>
@@ -392,9 +461,17 @@
 <script>
 const DATA_URL = "data/data.json";
 const UNIV_URL = "data/universe.json";
-const LS_GROUPS = "jyfund_groups";
-const LS_SELECTED = "jyfund_selected_group";
+const GROUPS_URL = "data/groups.json";
+const LS_GROUPS = "jyfund_groups";           // legacy (배열)
+const LS_SELECTED = "jyfund_selected_group"; // legacy
+const LS_GROUPS_V2 = "jyfund_groups_v2";     // { updatedAt, groups, selectedGroupId }
+const LS_PAT = "jyfund_gh_pat";
+const LS_SHA = "jyfund_groups_sha";
+const REPO = "thehfk/jyfund-signal";
+const GROUPS_PATH = "data/groups.json";
 const STATE_ORDER = { STRONG: 0, ACTIONABLE: 1, READY: 2, WATCH: 3, PASS: 4 };
+let SYNC_TIMER = null;
+let LAST_SYNC_ERR = "";
 
 let DATA = null;
 let UNIVERSE = [];
@@ -418,28 +495,232 @@ async function boot() {
     console.error(e);
     return;
   }
-  loadGroups();
+  await loadGroupsMerged();
   renderMeta();
   renderGroupSelect();
   render();
   bindEvents();
+  refreshSyncBadge();  // 초기 상태 표시
 }
 
-// ────────── groups (localStorage) ──────────
-function loadGroups() {
+// ────────── groups (localStorage v2 + remote merge) ──────────
+function readLocalV2() {
+  // 1) v2 우선
   try {
-    GROUPS = JSON.parse(localStorage.getItem(LS_GROUPS) || "[]");
-  } catch { GROUPS = []; }
-  if (!GROUPS.length) {
-    GROUPS = [{ id: "default", name: "Default", tickers: ["NVDA","GOOGL","MSFT"] }];
-    saveGroups();
-  }
-  SELECTED = localStorage.getItem(LS_SELECTED) || GROUPS[0].id;
-  if (!GROUPS.find(g => g.id === SELECTED)) SELECTED = GROUPS[0].id;
+    const raw = localStorage.getItem(LS_GROUPS_V2);
+    if (raw) {
+      const j = JSON.parse(raw);
+      if (j && Array.isArray(j.groups)) return j;
+    }
+  } catch {}
+  // 2) 구버전(배열) 마이그레이션
+  try {
+    const raw = localStorage.getItem(LS_GROUPS);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length) {
+        const sel = localStorage.getItem(LS_SELECTED) || arr[0].id;
+        return { updatedAt: new Date().toISOString(), groups: arr, selectedGroupId: sel };
+      }
+    }
+  } catch {}
+  return null;
 }
-function saveGroups() { localStorage.setItem(LS_GROUPS, JSON.stringify(GROUPS)); }
-function saveSelected() { localStorage.setItem(LS_SELECTED, SELECTED); }
+
+async function fetchRemoteGroups() {
+  try {
+    const r = await fetch(GROUPS_URL + "?t=" + Date.now(), {cache:"no-store"});
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+async function loadGroupsMerged() {
+  const local = readLocalV2();
+  const remote = await fetchRemoteGroups();
+
+  const localT = local?.updatedAt ? Date.parse(local.updatedAt) : 0;
+  const remoteT = remote?.updatedAt ? Date.parse(remote.updatedAt) : 0;
+
+  let winner = null;
+  let needPush = false;
+
+  if (local && localT > remoteT && local.groups.length) {
+    winner = local;
+    needPush = true;  // 로컬이 최신 → 저장소에 반영
+  } else if (remote && remote.groups.length) {
+    winner = remote;
+  } else if (local && local.groups.length) {
+    winner = local;
+    needPush = true;
+  } else {
+    // 아무것도 없음 (신규)
+    winner = {
+      updatedAt: new Date().toISOString(),
+      groups: [{ id: "default", name: "Default", tickers: ["NVDA","GOOGL","MSFT"] }],
+      selectedGroupId: "default",
+    };
+    needPush = true;
+  }
+
+  GROUPS = winner.groups;
+  SELECTED = winner.selectedGroupId || GROUPS[0].id;
+  if (!GROUPS.find(g => g.id === SELECTED)) SELECTED = GROUPS[0].id;
+
+  // 로컬 저장 (updatedAt은 winner 그대로 유지 — 새 편집이 아님)
+  localStorage.setItem(LS_GROUPS_V2, JSON.stringify({
+    updatedAt: winner.updatedAt,
+    groups: GROUPS,
+    selectedGroupId: SELECTED,
+  }));
+
+  if (needPush) scheduleSync();
+}
+
+function saveGroups() {
+  // 편집이 일어난 시점 → updatedAt 갱신 + 원격 push 예약
+  localStorage.setItem(LS_GROUPS_V2, JSON.stringify({
+    updatedAt: new Date().toISOString(),
+    groups: GROUPS,
+    selectedGroupId: SELECTED,
+  }));
+  scheduleSync();
+}
+
+function saveSelected() {
+  // 그룹 선택 변경 — 이것도 동기화 (기기 간 마지막 열어본 그룹 통일)
+  const raw = localStorage.getItem(LS_GROUPS_V2);
+  const cur = raw ? JSON.parse(raw) : { groups: GROUPS };
+  cur.selectedGroupId = SELECTED;
+  cur.updatedAt = new Date().toISOString();
+  localStorage.setItem(LS_GROUPS_V2, JSON.stringify(cur));
+  scheduleSync();
+}
+
 function currentGroup() { return GROUPS.find(g => g.id === SELECTED); }
+
+// ────────── sync to repo ──────────
+function scheduleSync() {
+  if (SYNC_TIMER) clearTimeout(SYNC_TIMER);
+  setSyncBadge("pending");
+  SYNC_TIMER = setTimeout(pushToRepo, 3000);
+}
+
+function setSyncBadge(state, detailText) {
+  const el = document.getElementById("syncStatus");
+  if (!el) return;
+  const map = {
+    idle:    { text: "☁ 대기",       cls: "sync-idle",    detail: "동기화 없음" },
+    pending: { text: "⏳ 곧 동기화",  cls: "sync-pending", detail: "3초 뒤 저장소에 커밋 예약됨" },
+    syncing: { text: "⏳ 동기화 중",  cls: "sync-syncing", detail: "GitHub API 커밋 중..." },
+    ok:      { text: "☁ 동기화됨",   cls: "sync-ok",      detail: "저장소와 일치. 다른 기기에서 새로고침하면 반영 (Pages 캐시 5~10분)." },
+    error:   { text: "⚠ 동기화 실패", cls: "sync-error",   detail: LAST_SYNC_ERR || "네트워크/PAT 오류. 콘솔 확인." },
+    "no-pat":{ text: "⚙ PAT 필요",   cls: "sync-no-pat",  detail: "GitHub Personal Access Token이 설정되지 않았습니다. 클릭해서 설정하세요." },
+  };
+  const s = map[state] || map.idle;
+  el.textContent = s.text;
+  el.className = "btn small " + s.cls;
+  const dEl = document.getElementById("syncStatusDetail");
+  if (dEl) dEl.textContent = detailText || s.detail;
+}
+
+function refreshSyncBadge() {
+  const pat = localStorage.getItem(LS_PAT);
+  if (!pat) setSyncBadge("no-pat");
+  else setSyncBadge("idle");
+}
+
+async function pushToRepo() {
+  const pat = localStorage.getItem(LS_PAT);
+  if (!pat) { setSyncBadge("no-pat"); return; }
+
+  setSyncBadge("syncing");
+  const raw = localStorage.getItem(LS_GROUPS_V2);
+  if (!raw) { setSyncBadge("ok"); return; }
+  const body = raw;  // 저장된 JSON 그대로 커밋 (updatedAt 포함)
+  const contentB64 = btoa(unescape(encodeURIComponent(JSON.stringify(JSON.parse(body), null, 2) + "\n")));
+
+  const tryPut = async (sha) => {
+    const putBody = {
+      message: `groups: sync from browser ${new Date().toISOString()}`,
+      content: contentB64,
+      branch: "main",
+    };
+    if (sha) putBody.sha = sha;
+    return await fetch(`https://api.github.com/repos/${REPO}/contents/${GROUPS_PATH}`, {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${pat}`,
+        "Content-Type": "application/json",
+        "Accept": "application/vnd.github+json",
+      },
+      body: JSON.stringify(putBody),
+    });
+  };
+
+  const fetchSha = async () => {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${GROUPS_PATH}?ref=main&t=${Date.now()}`, {
+      headers: {
+        "Authorization": `Bearer ${pat}`,
+        "Accept": "application/vnd.github+json",
+      },
+      cache: "no-store",
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.sha;
+  };
+
+  try {
+    let sha = localStorage.getItem(LS_SHA);
+    if (!sha) sha = await fetchSha();
+
+    let r = await tryPut(sha);
+    if (r.status === 409 || r.status === 422) {
+      // sha 불일치 → 최신 sha 다시 받아 재시도
+      const fresh = await fetchSha();
+      r = await tryPut(fresh);
+    }
+    if (!r.ok) {
+      const text = await r.text();
+      LAST_SYNC_ERR = `HTTP ${r.status}: ${text.slice(0, 200)}`;
+      throw new Error(LAST_SYNC_ERR);
+    }
+    const rj = await r.json();
+    if (rj.content?.sha) localStorage.setItem(LS_SHA, rj.content.sha);
+    LAST_SYNC_ERR = "";
+    setSyncBadge("ok");
+  } catch (e) {
+    console.error("[sync] push failed:", e);
+    setSyncBadge("error");
+  }
+}
+
+function openSyncModal() {
+  const pat = localStorage.getItem(LS_PAT);
+  document.getElementById("patInput").value = pat ? "•".repeat(20) : "";
+  document.getElementById("syncModal").classList.add("on");
+  // 배지 상태는 유지 (마지막 sync 결과 반영). detail text는 setSyncBadge가 이미 채워놨음.
+}
+
+function savePAT() {
+  const v = document.getElementById("patInput").value.trim();
+  if (!v || v.startsWith("•")) return;  // masked placeholder 그대로면 무시
+  localStorage.setItem(LS_PAT, v);
+  localStorage.removeItem(LS_SHA);  // 새 토큰으로 sha 재확인
+  refreshSyncBadge();
+  scheduleSync();
+  // 3초 debounce 무시하고 즉시 push
+  if (SYNC_TIMER) clearTimeout(SYNC_TIMER);
+  pushToRepo();
+}
+
+function clearPAT() {
+  localStorage.removeItem(LS_PAT);
+  localStorage.removeItem(LS_SHA);
+  document.getElementById("patInput").value = "";
+  refreshSyncBadge();
+}
 
 // ────────── header ──────────
 function renderMeta() {
@@ -773,6 +1054,12 @@ function bindEvents() {
   };
   document.getElementById("manageBtn").onclick = openGroupModal;
   document.getElementById("helpBtn").onclick = () => document.getElementById("helpModal").classList.add("on");
+  document.getElementById("syncStatus").onclick = openSyncModal;
+  document.getElementById("patSaveBtn").onclick = savePAT;
+  document.getElementById("patClearBtn").onclick = clearPAT;
+  document.getElementById("patInput").addEventListener("focus", (e) => {
+    if (e.target.value.startsWith("•")) e.target.value = "";
+  });
   document.getElementById("newGroupBtn").onclick = newGroup;
 
   document.querySelectorAll("[data-close]").forEach(b => b.onclick = (e) => {
