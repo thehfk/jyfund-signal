@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-21T15:47:51.304Z",
+  "updatedAt": "2026-08-21T15:48:45.002Z",
   "groups": [
     {
       "id": "default",
@@ -18,9 +18,11 @@
       "tickers": [
         "NVDA",
         "MSFT",
-        "GOOGL"
+        "GOOGL",
+        "TSLA",
+        "AMZN"
       ]
     }
   ],
-  "selectedGroupId": "g1787275540464"
+  "selectedGroupId": "default"
 }
