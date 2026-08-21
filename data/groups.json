@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-21T15:59:27.750Z",
+  "updatedAt": "2026-08-21T15:59:30.955Z",
   "groups": [
     {
       "id": "default",
@@ -19,7 +19,8 @@
         "NVDA",
         "MSFT",
         "GOOGL",
-        "TSLA"
+        "TSLA",
+        "AMZN"
       ]
     }
   ],
