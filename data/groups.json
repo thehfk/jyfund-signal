@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-22T00:18:12.372Z",
+  "updatedAt": "2026-08-24T13:38:12.067Z",
   "groups": [
     {
       "id": "default",
@@ -19,9 +19,10 @@
         "NVDA",
         "MSFT",
         "TSLA",
-        "AMZN"
+        "AMZN",
+        "PLTR"
       ]
     }
   ],
-  "selectedGroupId": "default"
+  "selectedGroupId": "g1787275540464"
 }
